@@ -1,4 +1,6 @@
 import { LoginForm, LoginFormElements } from "@/components/login-form"
+import { connectRoom } from "@/services/connectRoom"
+import { getSessionId } from "@/utils/getSessionId"
 import { useNavigate } from "react-router-dom"
 
 export default function Home() {
@@ -7,8 +9,10 @@ export default function Home() {
   function handleJoinBoard(e: React.FormEvent<LoginFormElements>) {
     e.preventDefault()
 
-    // const name = e.currentTarget.elements.name.value
     const roomId = e.currentTarget.elements.room.value
+    const sessionId = getSessionId()
+
+    connectRoom({ roomId, sessionId })
 
     navigate(`/${roomId}`)
   }

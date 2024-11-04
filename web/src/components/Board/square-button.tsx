@@ -16,9 +16,9 @@ const squareButtonVariants = cva(
         [Piece.NONE]:
           "",
         [Piece.WHITE]:
-          "disabled:pointer-events-none disabled:opacity-100",
+          "disabled:pointer-events-none",
         [Piece.BLACK]:
-          "disabled:pointer-events-none disabled:opacity-100",
+          "disabled:pointer-events-none",
       },
     },
     defaultVariants: {
@@ -28,8 +28,10 @@ const squareButtonVariants = cva(
 )
 
 export function SquareButton({ piece, className, ...rest }: Props) {
+  const isDisabled = piece !== Piece.NONE
+
   return (
-    <Button className={cn("w-full h-full p-2.5", squareButtonVariants({ variant: piece }), className)} disabled {...rest}>
+    <Button className={cn("w-full h-full p-2.5 disabled:opacity-100", squareButtonVariants({ variant: piece }), className)} disabled={isDisabled} {...rest}>
       <BoardPiece piece={piece} />
     </Button>
   )
