@@ -1,5 +1,5 @@
 import { Send } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -11,33 +11,52 @@ import {
 import { cn } from "@/lib/utils"
 
 import { Input } from "@/components/ui/input"
+import { socket } from "@/services/socket"
 import { useParams } from "react-router-dom"
 
-const messagesMock = [
-  {
-    role: "agent",
-    content: "Hi, how can I help you today?",
-  },
-  {
-    role: "user",
-    content: "Hey, I'm having trouble with my account.",
-  },
-  {
-    role: "agent",
-    content: "What seems to be the problem?",
-  },
-  {
-    role: "user",
-    content: "I can't log in.",
-  },
-]
+type Message = {
+  role: "user" | "opponent" | "system"
+  content: string
+}
 
 export function Chat({ className, ...rest }: React.HTMLAttributes<HTMLDivElement>) {
-  const [messages, setMessages] = useState(messagesMock)
+  const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
+  const { roomId } = useParams()
+  const chatRef = useRef<HTMLDivElement>(null)
+
   const inputLength = input.trim().length
 
-  const { roomId } = useParams()
+  function onSubmitMessage(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    if (inputLength === 0) return
+    setMessages([
+      ...messages,
+      {
+        role: "user",
+        content: input,
+      },
+    ])
+
+    socket.emit("message", input)
+    setInput("")
+  }
+
+  useEffect(() => {
+    socket.on('message', (message: Message) => {
+      setMessages(messages => [...messages, message]);
+    });
+
+    return () => {
+      socket.off('message');
+    };
+  }, []);
+
+  useEffect(() => {
+    if (chatRef.current) {
+      chatRef.current.scrollTop = chatRef.current?.scrollHeight + 20;
+    }
+  }, [messages])
 
   return (
     <Card className={cn("h-screen flex flex-col rounded-none", className)} {...rest}>
@@ -49,7 +68,7 @@ export function Chat({ className, ...rest }: React.HTMLAttributes<HTMLDivElement
           </div>
         </div>
       </CardHeader>
-      <CardContent className="flex-1 overflow-y-scroll">
+      <CardContent className="flex-1 overflow-y-scroll" ref={chatRef}>
         <div className="space-y-4">
           {messages.map((message, index) => (
             <div
@@ -58,7 +77,7 @@ export function Chat({ className, ...rest }: React.HTMLAttributes<HTMLDivElement
                 "flex w-max max-w-[75%] flex-col gap-2 rounded-lg px-3 py-2 text-sm",
                 message.role === "user"
                   ? "ml-auto bg-primary text-primary-foreground"
-                  : "bg-muted"
+                  : message.role === "system" ? "w-full max-w-[90%] mx-auto bg-[#2563EB] text-[#F8FAFC] text-center" : "bg-muted"
               )}
             >
               {message.content}
@@ -68,18 +87,7 @@ export function Chat({ className, ...rest }: React.HTMLAttributes<HTMLDivElement
       </CardContent>
       <CardFooter>
         <form
-          onSubmit={(event) => {
-            event.preventDefault()
-            if (inputLength === 0) return
-            setMessages([
-              ...messages,
-              {
-                role: "user",
-                content: input,
-              },
-            ])
-            setInput("")
-          }}
+          onSubmit={onSubmitMessage}
           className="flex w-full items-center space-x-2 pt-2"
         >
           <Input

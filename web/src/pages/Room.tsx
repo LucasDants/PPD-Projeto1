@@ -1,67 +1,63 @@
 import { Board } from "@/components/Board";
 import { Chat } from "@/components/chat";
-import { useSocket } from "@/hooks/useSocket";
+import { Piece } from "@/constants";
+
 import { connectRoom } from "@/services/connectRoom";
 import { socket } from "@/services/socket";
 import { getSessionId } from "@/utils/getSessionId";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
+export type Player = {
+  sessionId: string
+  socketId: string
+  connected: boolean
+
+  piece: Piece
+}
+
+export type Room = {
+  id: string
+  players: [Player, Player] | [Player]
+  currentTurnPlayer: Player
+  board: Piece[][]
+  started: boolean
+}
+
 export default function Room() {
-  useSocket()
+  const [room, setRoom] = useState<Room | null>(null)
   const { roomId } = useParams()
 
 
   const navigate = useNavigate()
 
   useEffect(() => {
-    function onConnect() {
-      console.log('connected')
-    }
-
-    function onDisconnect() {
-      console.log('disconnected')
-    }
-
-    function onConnectError() {
-      // navigate('/', { replace: true })
-    }
-
-    socket.on('connect', onConnect);
-    socket.on('disconnect', onDisconnect);
-    socket.on("connect_error", onConnectError);
-
-    socket.onAny((event, ...args) => {
-      console.log(event, args);
-    });
-
-    return () => {
-      socket.off('connect', onConnect);
-      socket.off('disconnect', onDisconnect);
-      socket.offAny();
-      socket.off("connect_error", onConnectError);
-    };
-  }, [navigate]);
-
-  useEffect(() => {
     if (roomId == null || roomId === '') {
       return
     }
 
+    function onConnectError() {
+      navigate('/', { replace: true })
+    }
+
+    socket.on("connect_error", onConnectError);
+    socket.on('room', (room: Room) => { setRoom(room) })
+
     if (!socket.connected) {
-      getSessionId()
       connectRoom({ roomId, sessionId: getSessionId() })
     }
 
     return () => {
       socket.disconnect()
+      socket.off('room')
+      socket.off("connect_error", onConnectError);
     }
-  }, [roomId])
+  }, [roomId, navigate])
 
   return (
     <div className="flex flex-1 h-screen justify-center">
       <Chat />
-      <Board />
+      <Board board={room?.board} />
     </div>
   )
 }
