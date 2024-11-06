@@ -31,11 +31,11 @@ const squareButtonVariants = cva(
 
 export function SquareButton({ piece, x, y, className, ...rest }: Props) {
   const isDisabled = piece !== Piece.NONE
-  console.log(x, y)
+
   return (
     <Button className={cn("w-full h-full p-2.5 disabled:opacity-100 relative", squareButtonVariants({ variant: piece }), className)} disabled={isDisabled} {...rest}>
       <BoardPiece piece={piece} />
-      <span className="absolute text-primary-foreground z-10 top-1 right-1 text-xs">{x}{y}</span>
+      <span className="absolute text-primary-foreground z-10 top-1 right-1 text-xs">{y}{x}</span>
     </Button>
   )
 }

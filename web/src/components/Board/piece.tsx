@@ -12,11 +12,11 @@ const pieceVariants = cva(
     variants: {
       variant: {
         [Piece.NONE]:
-          "bg-transparent",
+          "opacity-0",
         [Piece.WHITE]:
-          "bg-gradient-to-r from-zinc-50 via-zinc-200 to-zinc-50",
+          "opacity-100",
         [Piece.BLACK]:
-          "bg-gradient-to-r from-zinc-600 via-zinc-900 to-zinc-600",
+          "opacity-100",
       },
     },
     defaultVariants: {
@@ -27,6 +27,15 @@ const pieceVariants = cva(
 
 export function BoardPiece({ piece }: Props) {
   return (
-    <div className={cn('w-full h-full rounded-full', pieceVariants({ variant: piece }))} />
+    <div className={cn(
+      'w-full h-full rounded-full transition-all duration-1000',
+      'bg-gradient-to-br from-zinc-900 via-zinc-600 to-zinc-50',
+      pieceVariants({ variant: piece }),
+    )}
+      style={{
+        backgroundSize: "400% 400%",
+        backgroundPosition: piece === Piece.WHITE ? "100% 100%" : ""
+      }}
+    />
   )
 }

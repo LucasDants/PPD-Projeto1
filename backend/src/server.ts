@@ -70,7 +70,6 @@ io.on('connection', socket => {
 
     try {
       const { newTurn, room: newRoom, nextTurnPlayer, message } = game.onGameMove(room.id, socket.data.sessionId, { x, y })
-      console.log('play', message, newRoom.players)
 
       if (newTurn) {
         socket.to(nextTurnPlayer.socketId).emit('message', { content: `Sua vez de jogar!`, role: 'system' })
