@@ -9,11 +9,13 @@ interface ServerToClientEvents {
   }) => void
 
   room: (room: Room) => void
+  gameEnd: (data: { winnerSessionId: string }) => void
 }
 
 interface ClientToServerEvents {
   message: (message: string) => void
   play: ({ x, y }: { x: number, y: number }) => void
+  giveup: () => void
 }
 
 interface InterServerEvents {

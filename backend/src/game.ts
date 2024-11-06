@@ -18,6 +18,7 @@ export type Room = {
   currentTurnPlayer: Player
   board: Piece[][]
   startedAt: string | null
+  winner: Player | null
 }
 
 type JoinOrCreateRoomParams = {
@@ -87,13 +88,24 @@ export class Game {
         players: [player],
         currentTurnPlayer: player,
         board: BOARD,
-        startedAt: null
+        startedAt: null,
+        winner: null
       })
     }
   }
 
   getRoom(roomId: string) {
     return this.rooms.find(room => room.id === roomId) as Room
+  }
+
+  deleteRoom(roomId: string) {
+    const index = this.rooms.findIndex(room => room.id === roomId)
+    this.rooms.splice(index, 1)
+  }
+
+  getUser(roomId: string, sessionId: string) {
+    const room = this.getRoom(roomId)
+    return room.players.find(player => player.sessionId !== sessionId) ?? null
   }
 
   getUserByRoom(room: Room, sessionId: string) {
@@ -136,9 +148,13 @@ export class Game {
       throw new Error("A partida ainda não começou")
     }
 
+    if (room.winner != null) {
+      throw new Error("A partida foi finalizada!")
+    }
+
     const opponent = this.getOpponentByRoom(room, sessionId) as Player
     const piece = room.currentTurnPlayer.piece
-    console.log({ move })
+
     const { isValid, newBoard } = this.isValidMove(room.board, move.x, move.y, piece)
 
     if (isValid) {
@@ -146,10 +162,22 @@ export class Game {
       room.board[move.y][move.x] = piece
       room.currentTurnPlayer = opponent;
 
-      return { newTurn: true, room, nextTurnPlayer: room.currentTurnPlayer, message: "" }
+      const { winnerPiece } = this.checkWin(room.board)
+
+      let winner: Player | null = null;
+      let newTurn = true;
+      let message = "";
+
+      if (winnerPiece != null) {
+        winner = room.players.find(player => player.piece === winnerPiece) ?? null
+        newTurn = false;
+        message = "Fim de Jogo!"
+      }
+
+      return { newTurn, room, nextTurnPlayer: room.currentTurnPlayer, winner, message }
     }
 
-    return { newTurn: false, room, currentTurnPlayer: room.currentTurnPlayer, nextTurnPlayer: room.currentTurnPlayer, message: "Movimento inválido" }
+    return { newTurn: false, room, currentTurnPlayer: room.currentTurnPlayer, nextTurnPlayer: room.currentTurnPlayer, winner: null, message: "Movimento inválido" }
   }
 
   isValidMove(board: Piece[][], x: number, y: number, piece: Piece) {
@@ -175,18 +203,18 @@ export class Game {
     let nx = x + dx;
     let ny = y + dy;
 
-    console.log("start\n", { y, x }, "\ndirection ", { dy, dx })
+    // console.log("start\n", { y, x }, "\ndirection ", { dy, dx })
 
     while (this.isInBounds(nx, ny) && board[ny][nx] !== piece && board[ny][nx] !== Piece.NONE) {
 
-      console.log({ piece: board[ny][nx], ny, nx })
+      // console.log({ piece: board[ny][nx], ny, nx })
 
       captured.push([ny, nx]);
       nx += dx;
       ny += dy;
     }
 
-    console.log({ captured })
+    // console.log({ captured })
 
     if (this.isInBounds(nx, ny) && board[ny][nx] === piece) {
       for (let [cy, cx] of captured) {
@@ -195,12 +223,60 @@ export class Game {
       return captured.length > 0;
     }
 
-    console.log('end')
+    // console.log('end')
     return false;
   }
 
   isInBounds(x: number, y: number) {
     return x >= 0 && x < BOARD[0].length && y >= 0 && y < BOARD.length;
+  }
+
+  checkWin(board: Piece[][]) {
+    let totalPiecesPlayed = 0;
+    let white = 0;
+    let black = 0;
+
+    board.forEach(row => {
+      row.forEach(piece => {
+        if (piece === Piece.NONE) {
+          return
+        }
+
+        if (piece === Piece.WHITE) {
+          white++
+          totalPiecesPlayed++
+        }
+
+        if (piece === Piece.BLACK) {
+          black++
+          totalPiecesPlayed++
+        }
+      })
+    })
+
+    if (totalPiecesPlayed === 64) {
+      return { winnerPiece: white > black ? Piece.WHITE : Piece.BLACK }
+    } else if (white === totalPiecesPlayed) {
+      return { winnerPiece: Piece.WHITE }
+    } else if (black === totalPiecesPlayed) {
+      return { winnerPiece: Piece.BLACK }
+    }
+
+    return { winnerPiece: null }
+  }
+
+  onGiveUp(roomId: string, sessionId: string) {
+    const room = this.getRoom(roomId)
+
+    if (room.winner != null) {
+      throw new Error("A partida já foi finalizada")
+    }
+
+    const winner = room.players.find(player => player.sessionId !== sessionId) as Player
+
+    room.winner = winner
+
+    return room
   }
 
   onDisconnect(sessionId: string) {

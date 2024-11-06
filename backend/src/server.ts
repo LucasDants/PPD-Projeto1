@@ -1,5 +1,5 @@
 import { app, io } from "./app";
-import { game, Piece } from "./game";
+import { game, Piece, Player } from "./game";
 
 io.use((socket, next) => {
   const roomId: string = socket.handshake.auth.roomId ?? ''
@@ -34,13 +34,6 @@ io.on('connection', socket => {
     })
   }
 
-  if (room.players.length === 1) {
-    socket.emit('message', {
-      role: 'system',
-      content: 'Aguardando oponente conectar...'
-    })
-  }
-
   if (room.players.length === 2) {
     socket.emit('message', {
       role: 'system',
@@ -67,21 +60,49 @@ io.on('connection', socket => {
   })
 
   socket.on('play', ({ x, y }) => {
-
     try {
-      const { newTurn, room: newRoom, nextTurnPlayer, message } = game.onGameMove(room.id, socket.data.sessionId, { x, y })
-
+      const { newTurn, room: newRoom, nextTurnPlayer, message, winner } = game.onGameMove(room.id, socket.data.sessionId, { x, y })
+      console.log(newTurn, newRoom, nextTurnPlayer, message, winner)
       if (newTurn) {
         socket.to(nextTurnPlayer.socketId).emit('message', { content: `Sua vez de jogar!`, role: 'system' })
         socket.emit('room', newRoom)
         socket.to(nextTurnPlayer.socketId).emit('room', room)
       } else {
-        socket.emit('message', { content: message, role: 'system' })
+        if (winner != null) {
+          const opponent = game.getOpponent(socket.data.roomId, socket.data.sessionId) as Player
+
+          socket.emit('gameEnd', { winnerSessionId: winner.sessionId })
+          socket.to(opponent?.socketId).emit('gameEnd', { winnerSessionId: winner.sessionId })
+
+          socket.emit('room', newRoom)
+          socket.to(opponent?.socketId).emit('room', room)
+
+          socket.emit('message', { content: message, role: 'system' })
+          socket.to(opponent.socketId).emit('message', { content: message, role: 'system' })
+        } else {
+          socket.emit('message', { content: message, role: 'system' })
+        }
       }
 
     } catch (err) {
       socket.emit('message', { content: (err as Error).message, role: 'system' })
     }
+  })
+
+  socket.on('giveup', () => {
+    const room = game.getRoom(socket.data.roomId)
+    const opponent = game.getOpponentByRoom(room, socket.data.sessionId) as Player
+    console
+    game.onGiveUp(room.id, socket.data.sessionId)
+
+    socket.emit('message', { content: "Jogo finalizado!", role: 'system' })
+    socket.to(opponent.socketId).emit('message', { content: "Jogo finalizado!", role: 'system' })
+
+    socket.emit('gameEnd', { winnerSessionId: opponent?.sessionId ?? '' })
+    socket.to(opponent.socketId).emit('gameEnd', {
+      winnerSessionId: opponent.sessionId
+    })
+
   })
 
   socket.on('disconnect', () => {

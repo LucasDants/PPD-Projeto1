@@ -42,6 +42,13 @@ export default function Room() {
 
     socket.on("connect_error", onConnectError);
     socket.on('room', (room: Room) => { setRoom(room) })
+    socket.on('gameEnd', (winner: { winnerSessionId: string }) => {
+      if (winner.winnerSessionId === getSessionId()) {
+        alert('Você venceu!')
+      } else {
+        alert('Você perdeu!')
+      }
+    })
 
     if (!socket.connected) {
       connectRoom({ roomId, sessionId: getSessionId() })
