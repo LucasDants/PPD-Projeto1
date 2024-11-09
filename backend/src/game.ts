@@ -76,11 +76,6 @@ export class Game {
 
         room.players.push({ sessionId, socketId, connected: true, piece })
       }
-
-      if (hasPlayer) {
-        hasPlayer.connected = true
-      }
-
     } else {
       const player = { sessionId, socketId, connected: true, piece: Piece.BLACK }
       this.rooms.push({
@@ -92,6 +87,16 @@ export class Game {
         winner: null
       })
     }
+  }
+
+  connectUser(roomId: string, sessionId: string) {
+    const room = this.getRoom(roomId)
+
+    room.players.forEach(player => {
+      if (player.sessionId === sessionId) {
+        player.connected = true
+      }
+    })
   }
 
   getRoom(roomId: string) {
@@ -160,7 +165,6 @@ export class Game {
     if (isValid) {
       room.board = newBoard
       room.board[move.y][move.x] = piece
-      room.currentTurnPlayer = opponent;
 
       const { winnerPiece } = this.checkWin(room.board)
 
@@ -170,14 +174,21 @@ export class Game {
 
       if (winnerPiece != null) {
         winner = room.players.find(player => player.piece === winnerPiece) ?? null
+        room.winner = winner
         newTurn = false;
         message = "Fim de Jogo!"
       }
 
-      return { newTurn, room, nextTurnPlayer: room.currentTurnPlayer, winner, message }
+      const hasNextPlayerValidMove = this.hasValidMoves(room.board, opponent.piece)
+
+      if (hasNextPlayerValidMove) {
+        room.currentTurnPlayer = opponent;
+      }
+
+      return { newTurn, room, nextTurnPlayer: room.currentTurnPlayer, winner, hasNextPlayerValidMove, skipOpponentTurn: !hasNextPlayerValidMove, message }
     }
 
-    return { newTurn: false, room, currentTurnPlayer: room.currentTurnPlayer, nextTurnPlayer: room.currentTurnPlayer, winner: null, message: "Movimento inválido" }
+    return { newTurn: false, room, nextTurnPlayer: room.currentTurnPlayer, winner: null, message: "Movimento inválido" }
   }
 
   isValidMove(board: Piece[][], x: number, y: number, piece: Piece) {
@@ -265,6 +276,20 @@ export class Game {
     return { winnerPiece: null }
   }
 
+  hasValidMoves(board: Piece[][], piece: Piece) {
+    for (let y = 0; y < board.length; y++) {
+      for (let x = 0; x < board[y].length; x++) {
+        if (board[y][x] === Piece.NONE) {
+          if (this.isValidMove(board, x, y, piece).isValid) {
+            return true
+          }
+        }
+      }
+    }
+
+    return false
+  }
+
   onGiveUp(roomId: string, sessionId: string) {
     const room = this.getRoom(roomId)
 
@@ -279,14 +304,18 @@ export class Game {
     return room
   }
 
-  onDisconnect(sessionId: string) {
-    this.rooms.forEach(room => {
-      room.players.forEach(player => {
-        if (player.sessionId === sessionId) {
-          player.connected = false
-        }
-      })
-    })
+  onDisconnect(sessionId: string, roomId: string) {
+    const room = this.getRoom(roomId)
+
+    const player = room.players.find(player => player.sessionId === sessionId)
+
+    if (player != null) {
+      player.connected = false
+    }
+
+    if (room.players.every(player => !player.connected)) {
+      this.deleteRoom(roomId)
+    }
   }
 }
 

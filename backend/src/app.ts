@@ -9,7 +9,7 @@ interface ServerToClientEvents {
   }) => void
 
   room: (room: Room) => void
-  gameEnd: (data: { winnerSessionId: string }) => void
+  gameEnd: (room: Room) => void
 }
 
 interface ClientToServerEvents {
@@ -35,6 +35,6 @@ export const io = new Server<
   SocketData
 >(app, {
   cors: {
-    origin: 'http://localhost:5173'
-  }
+    origin: ['http://localhost:5173', 'http://localhost:4173']
+  },
 })

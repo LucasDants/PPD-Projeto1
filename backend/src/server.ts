@@ -10,7 +10,6 @@ io.use((socket, next) => {
 
     socket.data.roomId = roomId
     socket.data.sessionId = sessionId
-
     return next()
   } catch (err) {
     return next(err as Error)
@@ -18,25 +17,29 @@ io.use((socket, next) => {
 })
 
 io.on('connection', socket => {
+  console.log('connected', socket.data.sessionId)
   const room = game.getRoom(socket.data.roomId)
   const opponent = game.getOpponentByRoom(room, socket.data.sessionId)
   const player = game.getUserByRoom(room, socket.data.sessionId)
 
+  game.connectUser(socket.data.roomId, socket.data.sessionId)
+
+
   socket.emit('message', {
-    role: 'system',
+    role: "system",
     content: 'Bem vindo a Sala ' + socket.data.roomId + `! Jogador ${socket.data.sessionId} sua peça é a ` + Piece[player?.piece ?? 0]
   })
 
   if (room.players.length === 1) {
     socket.emit('message', {
-      role: 'system',
+      role: "system",
       content: 'Aguardando oponente conectar...'
     })
   }
 
   if (room.players.length === 2) {
     socket.emit('message', {
-      role: 'system',
+      role: "system",
       content: 'Oponente conectado! Iniciando partida...'
     })
     game.onStartGame(room.id)
@@ -45,7 +48,8 @@ io.on('connection', socket => {
   socket.emit('room', room)
 
   if (opponent != null) {
-    socket.to(opponent?.socketId).emit('message', { content: `Jogador adversário entrou na partida!`, role: 'opponent' })
+    socket.to(opponent?.socketId).emit('message', { content: `Jogador adversário entrou na partida!`, role: "system" })
+    socket.to(opponent?.socketId).emit('room', room)
   }
 
   // listeners
@@ -61,58 +65,63 @@ io.on('connection', socket => {
 
   socket.on('play', ({ x, y }) => {
     try {
-      const { newTurn, room: newRoom, nextTurnPlayer, message, winner } = game.onGameMove(room.id, socket.data.sessionId, { x, y })
-      console.log(newTurn, newRoom, nextTurnPlayer, message, winner)
+      const { newTurn, room: newRoom, nextTurnPlayer, message, winner, skipOpponentTurn } = game.onGameMove(room.id, socket.data.sessionId, { x, y })
+      const opponent = game.getOpponentByRoom(newRoom, socket.data.sessionId) as Player
       if (newTurn) {
-        socket.to(nextTurnPlayer.socketId).emit('message', { content: `Sua vez de jogar!`, role: 'system' })
         socket.emit('room', newRoom)
-        socket.to(nextTurnPlayer.socketId).emit('room', room)
+        socket.to(opponent?.socketId).emit('room', newRoom)
+
+        if (skipOpponentTurn) {
+          socket.to(opponent?.socketId).emit('message', { content: `Você não tem jogadas disponiveis, seu adversário irá jogar novamente!`, role: "system" })
+          socket.emit('message', { content: `Adversário sem jogadas, jogue novamente!`, role: "system" })
+        } else {
+          console.log('socket', nextTurnPlayer)
+          socket.to(nextTurnPlayer.socketId).emit('message', { content: `Sua vez de jogar!`, role: "system" })
+        }
+
       } else {
         if (winner != null) {
           const opponent = game.getOpponent(socket.data.roomId, socket.data.sessionId) as Player
 
-          socket.emit('gameEnd', { winnerSessionId: winner.sessionId })
-          socket.to(opponent?.socketId).emit('gameEnd', { winnerSessionId: winner.sessionId })
+          socket.emit('gameEnd', newRoom)
+          socket.to(opponent?.socketId).emit('gameEnd', newRoom)
 
-          socket.emit('room', newRoom)
-          socket.to(opponent?.socketId).emit('room', room)
 
-          socket.emit('message', { content: message, role: 'system' })
-          socket.to(opponent.socketId).emit('message', { content: message, role: 'system' })
+          // socket.emit('message', { content: message, role: 'system' })
+          // socket.to(opponent.socketId).emit('message', { content: message, role: 'system' })
         } else {
-          socket.emit('message', { content: message, role: 'system' })
+          socket.emit('message', { content: message, role: "system" })
         }
       }
 
     } catch (err) {
-      socket.emit('message', { content: (err as Error).message, role: 'system' })
+      socket.emit('message', { content: (err as Error).message, role: "system" })
     }
   })
 
   socket.on('giveup', () => {
     const room = game.getRoom(socket.data.roomId)
     const opponent = game.getOpponentByRoom(room, socket.data.sessionId) as Player
-    console
+
     game.onGiveUp(room.id, socket.data.sessionId)
 
-    socket.emit('message', { content: "Jogo finalizado!", role: 'system' })
-    socket.to(opponent.socketId).emit('message', { content: "Jogo finalizado!", role: 'system' })
+    // socket.emit('message', { content: "Jogo finalizado!", role: 'system' })
+    // socket.to(opponent?.socketId).emit('message', { content: "Jogo finalizado!", role: 'system' })
 
-    socket.emit('gameEnd', { winnerSessionId: opponent?.sessionId ?? '' })
-    socket.to(opponent.socketId).emit('gameEnd', {
-      winnerSessionId: opponent.sessionId
-    })
+    socket.emit('gameEnd', room)
+    socket.to(opponent?.socketId).emit('gameEnd', room)
 
   })
 
   socket.on('disconnect', () => {
+    console.log('disconnect', socket.data.sessionId)
     const opponent = game.getOpponent(socket.data.roomId, socket.data.sessionId)
 
     if (opponent != null) {
-      socket.to(opponent.socketId).emit('message', { content: `Jogador adversário saiu da partida!`, role: 'opponent' })
+      socket.to(opponent.socketId).emit('message', { content: `Jogador adversário saiu da partida!`, role: "system" })
     }
 
-    game.onDisconnect(socket.data.sessionId)
+    game.onDisconnect(socket.data.sessionId, socket.data.roomId)
 
   })
 })

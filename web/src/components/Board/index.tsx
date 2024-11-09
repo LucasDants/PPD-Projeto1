@@ -8,7 +8,7 @@ type Props = React.HTMLAttributes<HTMLDivElement> & {
   board?: Piece[][]
 }
 
-const INITIAL_BOARD = [
+export const INITIAL_BOARD = [
   [0, 0, 0, 0, 0, 0, 0, 0],
   [0, 0, 0, 0, 0, 0, 0, 0],
   [0, 0, 0, 0, 0, 0, 0, 0],
@@ -22,7 +22,6 @@ const INITIAL_BOARD = [
 export function Board({ board = INITIAL_BOARD, className, ...rest }: Props) {
 
   function handleSendMove(x: number, y: number) {
-    console.log(x, y)
     socket.emit("play", { x, y })
   }
 
