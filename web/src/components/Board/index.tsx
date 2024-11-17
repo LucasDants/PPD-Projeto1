@@ -26,8 +26,15 @@ export function Board({ board = INITIAL_BOARD, className, ...rest }: Props) {
   }
 
   return (
-    <main className={cn("grid grid-rows-8 grid-cols-8 gap-1 h-screen w-[100vh] py-4 px-6", className)} {...rest}>
-      {board.map((row, rowIndex) => row.map((piece, colIndex) => <SquareButton className="w-full h-full" x={rowIndex} y={colIndex} piece={piece} key={String(rowIndex) + colIndex} onClick={() => handleSendMove(colIndex, rowIndex)}></SquareButton>))}
+    <main className={cn("grid grid-rows-8 grid-cols-8 gap-1 w-[100vh] h-max max-h-full py-4 px-6 aspect-square", className)} {...rest}>
+      {board.map((row, rowIndex) => row.map((piece, colIndex) =>
+        <SquareButton
+          x={rowIndex}
+          y={colIndex}
+          piece={piece}
+          key={String(rowIndex) + colIndex}
+          onClick={() => handleSendMove(colIndex, rowIndex)} />
+      ))}
     </main>
   )
 }

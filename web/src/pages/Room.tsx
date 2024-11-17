@@ -53,7 +53,6 @@ export default function Room() {
     socket.on("connect_error", onConnectError);
     socket.on('room', (room: Room) => { setRoom(room) })
     socket.on('gameEnd', (room: Room) => {
-      console.log("end", room)
       setRoom(room)
       setIsEnded(true)
     })
