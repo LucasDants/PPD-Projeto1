@@ -1,0 +1,25 @@
+{
+  "private": true,
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev"
+  },
+  "devDependencies": {
+    "@rocketseat/eslint-config": "2.2.2",
+    "eslint": "9.16.0",
+    "lint-staged": "15.2.2",
+    "tsup": "8.0.2",
+    "turbo": "1.13.3"
+  },
+  "config": {
+    "commitizen": {
+      "path": "cz-conventional-changelog"
+    }
+  },
+  "lint-staged": {
+    "src/**/*.(ts|tsx)": [
+      "eslint --fix"
+    ]
+  },
+  "packageManager": "pnpm@9.11.0"
+}
