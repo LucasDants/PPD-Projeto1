@@ -1,129 +1,94 @@
-import { app, io } from "./app";
-import { game, Piece, Player } from "./game";
+import { initTRPC } from "@trpc/server";
+import type { CreateHTTPContextOptions } from "@trpc/server/adapters/standalone";
+import { createHTTPServer } from "@trpc/server/adapters/standalone";
+import type { CreateWSSContextFnOptions } from "@trpc/server/adapters/ws";
+import { applyWSSHandler } from "@trpc/server/adapters/ws";
+import { observable } from "@trpc/server/observable";
+import cors from "cors";
+import { WebSocketServer } from "ws";
+import { z } from "zod";
 
-io.use((socket, next) => {
-  const roomId: string = socket.handshake.auth.roomId ?? ''
-  const sessionId: string = socket.handshake.auth.sessionId ?? ''
+function createContext(
+  opts: CreateHTTPContextOptions | CreateWSSContextFnOptions
+) {
+  return {};
+}
+type Context = Awaited<ReturnType<typeof createContext>>;
 
-  try {
-    game.joinOrCreateRoom({ roomId, sessionId, socketId: socket.id })
+const t = initTRPC.context<Context>().create();
 
-    socket.data.roomId = roomId
-    socket.data.sessionId = sessionId
-    return next()
-  } catch (err) {
-    return next(err as Error)
-  }
-})
+const publicProcedure = t.procedure;
+const router = t.router;
 
-io.on('connection', socket => {
-  console.log('connected', socket.data.sessionId)
-  const room = game.getRoom(socket.data.roomId)
-  const opponent = game.getOpponentByRoom(room, socket.data.sessionId)
-  const player = game.getUserByRoom(room, socket.data.sessionId)
+const greetingRouter = router({
+  hello: publicProcedure
+    .input(
+      z.object({
+        name: z.string(),
+      })
+    )
+    .query(async ({ input }) => {
+      console.log({ input });
+      return { message: `Hello, ${input.name}!` };
+    }),
+});
 
-  game.connectUser(socket.data.roomId, socket.data.sessionId)
+const postRouter = router({
+  createPost: publicProcedure
+    .input(
+      z.object({
+        title: z.string(),
+        text: z.string(),
+      })
+    )
+    .mutation(({ input }) => {
+      // imagine db call here
+      return {
+        id: `${Math.random()}`,
+        ...input,
+      };
+    }),
+  randomNumber: publicProcedure.subscription(() => {
+    return observable<{ randomNumber: number }>((emit) => {
+      const timer = setInterval(() => {
+        // emits a number every second
+        emit.next({ randomNumber: Math.random() });
+      }, 200);
 
+      return () => {
+        clearInterval(timer);
+      };
+    });
+  }),
+});
 
-  socket.emit('message', {
-    role: "system",
-    content: 'Bem vindo a Sala ' + socket.data.roomId + `! Jogador ${socket.data.sessionId} sua peça é a ` + Piece[player?.piece ?? 0]
-  })
+// Merge routers together
+const appRouter = router({
+  greeting: greetingRouter,
+  post: postRouter,
+});
 
-  if (room.players.length === 1) {
-    socket.emit('message', {
-      role: "system",
-      content: 'Aguardando oponente conectar...'
-    })
-  }
+export type AppRouter = typeof appRouter;
 
-  if (room.players.length === 2) {
-    socket.emit('message', {
-      role: "system",
-      content: 'Oponente conectado! Iniciando partida...'
-    })
-    game.onStartGame(room.id)
-  }
+// http server
+const server = createHTTPServer({
+  middleware: cors(),
+  router: appRouter,
+  createContext,
+  onError({ error }) {
+    console.error("trpc error", error);
+  },
+});
 
-  socket.emit('room', room)
+// ws server
+const wss = new WebSocketServer({ server });
+applyWSSHandler<AppRouter>({
+  wss,
+  router: appRouter,
+  createContext,
+});
 
-  if (opponent != null) {
-    socket.to(opponent?.socketId).emit('message', { content: `Jogador adversário entrou na partida!`, role: "system" })
-    socket.to(opponent?.socketId).emit('room', room)
-  }
-
-  // listeners
-  socket.on('message', (message: string) => {
-    const opponent = game.getOpponent(socket.data.roomId, socket.data.sessionId)
-
-    if (opponent == null) {
-      return
-    }
-
-    socket.to(opponent?.socketId).emit('message', { content: message, role: 'opponent' })
-  })
-
-  socket.on('play', ({ x, y }) => {
-    try {
-      const { newTurn, room: newRoom, nextTurnPlayer, message, winner, skipOpponentTurn } = game.onGameMove(room.id, socket.data.sessionId, { x, y })
-      const opponent = game.getOpponentByRoom(newRoom, socket.data.sessionId) as Player
-      if (newTurn) {
-        socket.emit('room', newRoom)
-        socket.to(opponent?.socketId).emit('room', newRoom)
-
-        if (skipOpponentTurn) {
-          socket.to(opponent?.socketId).emit('message', { content: `Você não tem jogadas disponiveis, seu adversário irá jogar novamente!`, role: "system" })
-          socket.emit('message', { content: `Adversário sem jogadas, jogue novamente!`, role: "system" })
-        } else {
-          console.log('socket', nextTurnPlayer)
-          socket.to(nextTurnPlayer.socketId).emit('message', { content: `Sua vez de jogar!`, role: "system" })
-        }
-
-      } else {
-        if (winner != null) {
-          const opponent = game.getOpponent(socket.data.roomId, socket.data.sessionId) as Player
-
-          socket.emit('gameEnd', newRoom)
-          socket.to(opponent?.socketId).emit('gameEnd', newRoom)
-
-
-          // socket.emit('message', { content: message, role: 'system' })
-          // socket.to(opponent.socketId).emit('message', { content: message, role: 'system' })
-        } else {
-          socket.emit('message', { content: message, role: "system" })
-        }
-      }
-
-    } catch (err) {
-      socket.emit('message', { content: (err as Error).message, role: "system" })
-    }
-  })
-
-  socket.on('giveup', () => {
-    const room = game.getRoom(socket.data.roomId)
-    const opponent = game.getOpponentByRoom(room, socket.data.sessionId) as Player
-
-    game.onGiveUp(room.id, socket.data.sessionId)
-
-    // socket.emit('message', { content: "Jogo finalizado!", role: 'system' })
-    // socket.to(opponent?.socketId).emit('message', { content: "Jogo finalizado!", role: 'system' })
-
-    socket.emit('gameEnd', room)
-    socket.to(opponent?.socketId).emit('gameEnd', room)
-
-  })
-
-  socket.on('disconnect', () => {
-    console.log('disconnect', socket.data.sessionId)
-    const opponent = game.getOpponent(socket.data.roomId, socket.data.sessionId)
-
-    if (opponent != null) {
-      socket.to(opponent.socketId).emit('message', { content: `Jogador adversário saiu da partida!`, role: "system" })
-    }
-
-    game.onDisconnect(socket.data.sessionId, socket.data.roomId)
-
-  })
-})
-
-app.listen({ port: 3333, host: '0.0.0.0' }, () => console.log("🚀 HTTP Server is running on port 3333"))
+setInterval(() => {
+  console.log("Connected clients", wss.clients.size);
+}, 10000);
+server.listen(3333);
