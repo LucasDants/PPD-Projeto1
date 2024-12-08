@@ -11,9 +11,8 @@ const wsClient = createWSClient({
   url: `ws://localhost:3333`,
 });
 
-const trpc = createTRPCClient<AppRouter>({
+export const trpc = createTRPCClient<AppRouter>({
   links: [
-    // call subscriptions through websockets and the rest over http
     splitLink({
       condition(op) {
         return op.type === "subscription";
@@ -27,43 +26,3 @@ const trpc = createTRPCClient<AppRouter>({
     }),
   ],
 });
-
-export async function main() {
-  try {
-    const helloResponse = await trpc.greeting.hello.query({
-      name: "world",
-    });
-
-    console.log("helloResponse", helloResponse);
-
-    const createPostRes = await trpc.post.createPost.mutate({
-      title: "hello world",
-      text: "check out https://tRPC.io",
-    });
-    console.log("createPostResponse", createPostRes);
-
-    let count = 0;
-    await new Promise<void>((resolve) => {
-      const subscription = trpc.post.randomNumber.subscribe(undefined, {
-        onData(data) {
-          // ^ note that `data` here is inferred
-          console.log("received", data);
-          count++;
-          if (count > 3) {
-            // stop after 3 pulls
-            subscription.unsubscribe();
-            resolve();
-          }
-        },
-        onError(err) {
-          console.error("error", err);
-        },
-      });
-    });
-    wsClient.close();
-  } catch (err) {
-    console.log(err);
-  }
-}
-
-// void main();

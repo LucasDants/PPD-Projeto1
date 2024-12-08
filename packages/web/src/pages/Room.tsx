@@ -5,32 +5,21 @@ import { Piece } from "@/constants";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
-import { connectRoom } from "@/services/connectRoom";
-import { socket } from "@/services/socket";
+import { trpc } from "@/services/trpc";
 import { getSessionId } from "@/utils/getSessionId";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { Room as RoomType } from "../../../backend/src/game";
 
 export type Player = {
   sessionId: string
-  socketId: string
   connected: boolean
-
   piece: Piece
-}
-
-export type Room = {
-  id: string
-  players: [Player, Player] | [Player]
-  currentTurnPlayer: Player
-  board: Piece[][]
-  startedAt: string | null
-  winner: Player | null
 }
 
 export default function Room() {
   const [isEnded, setIsEnded] = useState(false)
-  const [room, setRoom] = useState<Room | null>(null)
+  const [room, setRoom] = useState<RoomType | null>(null)
   const { roomId } = useParams()
   const { toast } = useToast()
 
@@ -39,36 +28,33 @@ export default function Room() {
 
   const navigate = useNavigate()
 
-  console.log(room)
   useEffect(() => {
-    if (roomId == null || roomId === '') {
+    if (roomId == null || sessionId === '') {
       return
     }
 
-    function onConnectError(err: Error) {
-      toast({ title: 'Error connecting to room', description: err.message, variant: 'destructive' })
-      navigate('/', { replace: true })
-    }
+    trpc.joinRoom.mutate({roomId, sessionId})
 
-    socket.on("connect_error", onConnectError);
-    socket.on('room', (room: Room) => { setRoom(room) })
-    socket.on('gameEnd', (room: Room) => {
-      setRoom(room)
-      setIsEnded(true)
-    })
-    console.log(socket.connected)
-    if (!socket.connected) {
-      connectRoom({ roomId, sessionId: sessionId })
-    }
+       const sub = trpc.onGameChange.subscribe({roomId, sessionId},  {
+        context: { roomId, sessionId },
+        onData(data) {
+         setRoom(data.room)
+
+          if(data.room.winner) {
+            setIsEnded(true)
+          }
+        },
+        onError(err) {
+          console.error("error", err);
+        },
+      })
 
     return () => {
-      socket.off('room')
-      socket.off("connect_error", onConnectError);
-      setIsEnded(false)
-    }
+      sub.unsubscribe()
+       setIsEnded(false)
+    };
   }, [roomId, sessionId, toast, navigate])
 
-  console.log(room?.winner)
   return (
     <div className="flex flex-1 h-screen justify-center">
       <Chat piece={piece} />

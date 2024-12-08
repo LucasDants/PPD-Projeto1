@@ -12,7 +12,8 @@ import { cn } from "@/lib/utils"
 
 import { Input } from "@/components/ui/input"
 import { Piece } from "@/constants"
-import { socket } from "@/services/socket"
+import { trpc } from "@/services/trpc"
+import { getSessionId } from "@/utils/getSessionId"
 import { useNavigate, useParams } from "react-router-dom"
 import { BoardPiece } from "./Board/piece"
 
@@ -21,23 +22,25 @@ type Props = React.HTMLAttributes<HTMLDivElement> & {
 }
 
 type Message = {
-  role: "user" | "opponent" | "system"
+  sessionId: string | null
+  role: "player" | "system"
   content: string
 }
 
 export function Chat({ className, piece, ...rest }: Props) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
-  const { roomId } = useParams()
+  const { roomId } = useParams() as { roomId: string }
   const chatRef = useRef<HTMLDivElement>(null)
-
+  
   const inputLength = input.trim().length
   const navigate = useNavigate()
 
+  const sessionId = getSessionId(roomId as string)
+
   function handleGiveUp() {
     navigate('/')
-    socket.emit('giveup')
-    socket.disconnect()
+    trpc.giveUp.mutate({roomId, sessionId})
   }
 
   function handleSubmitMessage(e: React.FormEvent<HTMLFormElement>) {
@@ -46,23 +49,28 @@ export function Chat({ className, piece, ...rest }: Props) {
     setMessages([
       ...messages,
       {
-        role: "user",
+        sessionId: sessionId,
+        role: "player",
         content: input,
       },
     ])
 
-    socket.emit("message", input)
+    trpc.message.mutate({message: input, roomId, sessionId})
     setInput("")
   }
 
   useEffect(() => {
-    socket.on('message', (message: Message) => {
-      console.log(message)
-      setMessages(messages => [...messages, message]);
-    });
+    const sub = trpc.onGameChange.subscribe({roomId, sessionId},  {
+        onData(data) {
+          setMessages(data.room.messages)
+        },
+        onError(err) {
+          console.error("error", err);
+        },
+      })
 
     return () => {
-      socket.off('message');
+      sub.unsubscribe()
     };
   }, []);
 
@@ -99,9 +107,9 @@ export function Chat({ className, piece, ...rest }: Props) {
               key={index}
               className={cn(
                 "flex w-max max-w-[75%] flex-col gap-2 rounded-lg px-3 py-2 text-sm",
-                message.role === "user"
-                  ? "ml-auto bg-primary text-primary-foreground"
-                  : message.role === "system" ? "w-full max-w-[90%] mx-auto bg-[#2563EB] text-[#0f172a] text-center" : "bg-muted"
+                message.sessionId === sessionId && "ml-auto bg-primary text-primary-foreground",
+                message.role === "system" && "w-full max-w-[90%] mx-auto bg-[#2563EB] text-[#0f172a] text-center",
+                message.sessionId !== sessionId && message.role !== 'system' && "bg-muted"
               )}
             >
               {message.content}

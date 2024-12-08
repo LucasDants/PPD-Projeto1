@@ -1,6 +1,9 @@
 import { Piece } from "@/constants"
 import { cn } from "@/lib/utils"
-import { socket } from "@/services/socket"
+import { trpc } from "@/services/trpc"
+import { getSessionId } from "@/utils/getSessionId"
+import { useMemo } from "react"
+import { useParams } from "react-router-dom"
 import { SquareButton } from "./square-button"
 
 
@@ -20,9 +23,11 @@ export const INITIAL_BOARD = [
 ]
 
 export function Board({ board = INITIAL_BOARD, className, ...rest }: Props) {
+  const { roomId } = useParams() as { roomId: string }
+  const sessionId = useMemo(() => getSessionId(roomId as string), [roomId])
 
   function handleSendMove(x: number, y: number) {
-    socket.emit("play", { x, y })
+    trpc.play.mutate({ x, y, roomId, sessionId })
   }
 
   return (

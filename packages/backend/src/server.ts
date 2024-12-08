@@ -7,6 +7,7 @@ import { observable } from "@trpc/server/observable";
 import cors from "cors";
 import { WebSocketServer } from "ws";
 import { z } from "zod";
+import { game, Room } from "./game";
 
 function createContext(
   opts: CreateHTTPContextOptions | CreateWSSContextFnOptions
@@ -20,52 +21,102 @@ const t = initTRPC.context<Context>().create();
 const publicProcedure = t.procedure;
 const router = t.router;
 
-const greetingRouter = router({
-  hello: publicProcedure
+const appRouter = router({
+  joinRoom: publicProcedure
     .input(
       z.object({
-        name: z.string(),
-      })
-    )
-    .query(async ({ input }) => {
-      console.log({ input });
-      return { message: `Hello, ${input.name}!` };
-    }),
-});
-
-const postRouter = router({
-  createPost: publicProcedure
-    .input(
-      z.object({
-        title: z.string(),
-        text: z.string(),
+        roomId: z.string(),
+        sessionId: z.string(),
       })
     )
     .mutation(({ input }) => {
-      // imagine db call here
-      return {
-        id: `${Math.random()}`,
-        ...input,
-      };
+      const room = game.joinOrCreateRoom({
+        roomId: input.roomId,
+        sessionId: input.sessionId,
+      });
+      return { room };
     }),
-  randomNumber: publicProcedure.subscription(() => {
-    return observable<{ randomNumber: number }>((emit) => {
-      const timer = setInterval(() => {
-        // emits a number every second
-        emit.next({ randomNumber: Math.random() });
-      }, 200);
+  play: publicProcedure
+    .input(
+      z.object({
+        x: z.number(),
+        y: z.number(),
+        roomId: z.string(),
+        sessionId: z.string(),
+      })
+    )
+    .mutation(({ input }) => {
+      const { room } = game.onGameMove(input.roomId, input.sessionId, {
+        x: input.x,
+        y: input.y,
+      });
+      return { room };
+    }),
+  giveUp: publicProcedure
+    .input(
+      z.object({
+        roomId: z.string(),
+        sessionId: z.string(),
+      })
+    )
+    .mutation(({ input }) => {
+      const room = game.onGiveUp(input.roomId, input.sessionId);
+      return { room };
+    }),
+  message: publicProcedure
+    .input(
+      z.object({
+        message: z.string(),
+        roomId: z.string(),
+        sessionId: z.string(),
+      })
+    )
+    .mutation(({ input }) => {
+      const room = game.addMessage(
+        input.roomId,
+        input.sessionId,
+        "player",
+        input.message,
+        true
+      );
+      return { room };
+    }),
+  onGameChange: publicProcedure
+    .input(
+      z.object({
+        roomId: z.string(),
+        sessionId: z.string(),
+      })
+    )
+    .subscription(({ input }) => {
+      const room = game.connectUser(input.roomId, input.sessionId);
 
-      return () => {
-        clearInterval(timer);
-      };
-    });
-  }),
-});
+      setTimeout(() => {
+        if (room != null) {
+          game.onStartGame(room.id);
+        }
+      }, 1000);
 
-// Merge routers together
-const appRouter = router({
-  greeting: greetingRouter,
-  post: postRouter,
+      return observable<{ room: Room }>((emit) => {
+        game.addObserver({
+          sessionId: input.sessionId as string,
+          roomId: input.roomId as string,
+          update(room) {
+            if (room.id === input.roomId) {
+              emit.next({ room });
+            }
+          },
+        });
+
+        return () => {
+          game.onDisconnect(input.roomId, input.sessionId);
+          game.removeObserver(
+            input.sessionId as string,
+            input.roomId as string
+          );
+        };
+      });
+    }),
 });
 
 export type AppRouter = typeof appRouter;
@@ -88,7 +139,7 @@ applyWSSHandler<AppRouter>({
   createContext,
 });
 
-setInterval(() => {
-  console.log("Connected clients", wss.clients.size);
-}, 10000);
+// setInterval(() => {
+//   console.log("Connected clients", wss.clients.size, game.rooms);
+// }, 10000);
 server.listen(3333);
